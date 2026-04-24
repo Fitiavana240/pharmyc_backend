@@ -10,13 +10,12 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise Exception("⚠️ Variable DATABASE_URL manquante dans le .env")
 
-# Remplacez psycopg2 par psycopg (version 3)
+# Correction préfixe pour psycopg2
 if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
-elif DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
-elif DATABASE_URL.startswith("postgresql+psycopg2://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# Supprimer channel_binding non supporté par SQLAlchemy
+DATABASE_URL = DATABASE_URL.replace("&channel_binding=require", "")
 
 engine = create_engine(
     DATABASE_URL,
