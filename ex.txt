@@ -1,0 +1,38 @@
+
+from pydantic import BaseModel
+from typing import List
+from datetime import date
+
+# Modèle de données
+class Projet(BaseModel):
+    id: int
+    titre: str
+    description: str
+    date_debut: date
+    date_fin: date
+    budget: float
+    etat: str
+
+# Liste simulée
+projets: List[Projet] = [
+    Projet(
+        id=1,
+        titre="Construction école",
+        description="Projet pour construire une école primaire",
+        date_debut="2025-01-01",
+        date_fin="2025-06-01",
+        budget=10000,
+        etat="En cours"
+    )
+]
+
+# Route GET : liste des projets
+@app.get("/projets", response_model=List[Projet])
+def get_projets():
+    return projets
+
+# Route POST : ajouter un projet
+@app.post("/projets", response_model=Projet)
+def create_projet(projet: Projet):
+    projets.append(projet)
+    return projet
