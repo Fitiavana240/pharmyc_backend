@@ -1,42 +1,16 @@
-# fastapi==0.104.1
-# uvicorn==0.24.0
-# sqlalchemy==2.0.23
-# psycopg2-binary==2.9.9
-# passlib==1.7.4
-# python-jose[cryptography]==3.3.0
-# python-dotenv==1.0.0
-# python-multipart==0.0.6
-# email-validator==2.1.0
-# pydantic==2.5.0
-# alembic==1.12.1
-
-
-# fastapi
-# uvicorn[standard]
-# gunicorn
-# sqlalchemy
-# psycopg2-binary
-# python-dotenv
-# python-jose[cryptography]
-# passlib[bcrypt]
-# pydantic[email]
-# slowapi
-# reportlab
-# python-multipart
-
-
-
 fastapi==0.115.12
 uvicorn[standard]==0.34.0
 sqlalchemy==2.0.23
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.12
 passlib==1.7.4
 python-jose[cryptography]==3.3.0
 python-dotenv==1.0.0
 python-multipart==0.0.6
 email-validator==2.1.0
-pydantic==2.10.6
+pydantic==2.11.7
+pydantic-core==2.33.2
 alembic==1.12.1
 gunicorn
 slowapi
 reportlab
+python-multipart==0.0.6
