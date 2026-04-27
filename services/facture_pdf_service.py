@@ -1,5 +1,4 @@
-# services/facture_pdf_service.py — Pharmy-C v4.2
-
+# services/facture_pdf_service.py — version avec logo à droite, client sous pharmacie
 import os
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
@@ -39,10 +38,6 @@ def _deduire_unite(prix_unitaire, produit) -> tuple[str, str]:
 def _formater_quantite(quantite: int, unite_code: str, produit) -> str:
     """
     Convertit la quantité (toujours en pièces dans la DB) en affichage lisible.
-    Exemple : 40 pièces avec unité 'boite' (qpb=2, ppb=10) → '2 boîte(s)'
-    Exemple : 30 pièces avec unité 'blister' (ppb=10) → '3 blister(s)'
-    Exemple : 5 pièces avec unité 'piece' → '5 pièce(s)'
-    Cas mixte (pièces non divisibles par ppb) → '43 pcs'
     """
     if not produit:
         return f"{quantite} pcs"
@@ -54,7 +49,6 @@ def _formater_quantite(quantite: int, unite_code: str, produit) -> str:
             nb = quantite / (qpb * ppb)
             if nb == int(nb):
                 return f"{int(nb)} boîte{'s' if int(nb) > 1 else ''}"
-            # non entier → fallback pièces
             return f"{quantite} pcs"
 
         if unite_code == 'blister':
@@ -63,7 +57,6 @@ def _formater_quantite(quantite: int, unite_code: str, produit) -> str:
                 return f"{int(nb)} blister{'s' if int(nb) > 1 else ''}"
             return f"{quantite} pcs"
 
-        # pièce
         return f"{quantite} pcs"
 
     except Exception:
@@ -75,10 +68,9 @@ def generer_pdf_facture(facture, pharmacie, client, vente, details, db) -> str |
     Génère un PDF de facture A4.
     Layout :
       ┌──────────────────────────────────────────┐
-      │ [LOGO]  Pharmacie         FACTURÉ À      │
-      │         Adresse           Nom client     │
-      │         Tél / Email       Tél / Email    │
-      │                           N° client      │
+      │ PHARMACIE (infos)            [LOGO]      │
+      │                                          │
+      │ FACTURÉ À : Nom client, etc.             │
       ├──────────────────────────────────────────┤
       │ FACTURE N° X/2025    Réf: ...  Date: ... │
       ├──────────────────────────────────────────┤
@@ -169,64 +161,69 @@ def generer_pdf_facture(facture, pharmacie, client, vente, details, db) -> str |
         story = []
 
         # ════════════════════════════════════════════
-        # 1. EN-TÊTE : pharmacie (gauche) + client (droite)
+        # 1. EN-TÊTE : Pharmacie (gauche) + Logo (droite)
         # ════════════════════════════════════════════
 
-        # ── Colonne gauche : logo + pharmacie ───────
-        col_g = []
+        # Colonne gauche : toutes les infos pharmacie
+        col_gauche = []
+        col_gauche.append(Paragraph(pharmacie.nom if pharmacie else "Pharmacie", titre_ph))
+        for attr, lbl in [('adresse',''), ('telephone','Tél'), ('email','Email'), ('nif','NIF'), ('stat','STAT')]:
+            val = getattr(pharmacie, attr, None) if pharmacie else None
+            if val:
+                col_gauche.append(Paragraph(
+                    f"<b>{lbl} :</b> {val}" if lbl else val, info_ph
+                ))
 
+        # Colonne droite : logo seulement
+        col_droite = []
         logo_path = getattr(pharmacie, 'logo', None) if pharmacie else None
         if logo_path:
             p = logo_path.lstrip('/')
             if os.path.exists(p):
                 try:
                     img = RLImage(p, width=2.8*cm, height=2.8*cm, kind='proportional')
-                    col_g.append(img)
-                    col_g.append(Spacer(1, 0.15*cm))
+                    col_droite.append(img)
                 except Exception:
                     pass
 
-        col_g.append(Paragraph(pharmacie.nom if pharmacie else "Pharmacie", titre_ph))
-        for attr, lbl in [('adresse',''), ('telephone','Tél'), ('email','Email'), ('nif','NIF'), ('stat','STAT')]:
-            val = getattr(pharmacie, attr, None) if pharmacie else None
-            if val:
-                col_g.append(Paragraph(
-                    f"<b>{lbl} :</b> {val}" if lbl else val, info_ph
-                ))
-
-        # ── Colonne droite : client ──────────────────
-        col_d = []
-        col_d.append(Paragraph("FACTURÉ À", label_cli))
-
-        if client:
-            col_d.append(Paragraph(client.nom or "—", nom_cli))
-            if client.telephone:
-                col_d.append(Paragraph(f"<b>Tél :</b> {client.telephone}", info_cli))
-            if client.email:
-                col_d.append(Paragraph(f"<b>Email :</b> {client.email}", info_cli))
-            # Numéro identité client = code client (CLI-XXXXXX)
-            if getattr(client, 'code', None):
-                col_d.append(Paragraph(f"<b>N° :</b> {client.code}", info_cli))
-            if client.adresse:
-                col_d.append(Paragraph(f"<b>Adresse :</b> {client.adresse}", info_cli))
-        else:
-            col_d.append(Paragraph("Client anonyme", info_cli))
-
-        # Tableau 2 colonnes : gauche 10cm / droite 7.4cm
-        t_header = Table([[col_g, col_d]], colWidths=[10*cm, 7.4*cm])
-        t_header.setStyle(TableStyle([
+        # Tableau à 2 colonnes : gauche (pharmacie) / droite (logo)
+        t_logo = Table([[col_gauche, col_droite]], colWidths=[13*cm, 4.4*cm])
+        t_logo.setStyle(TableStyle([
             ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
             ('LEFTPADDING',   (0, 0), (0, 0),   0),
-            ('RIGHTPADDING',  (0, 0), (0, 0),   6),
-            # Encadré client avec fond légèrement coloré
-            ('BOX',           (1, 0), (1, 0),   0.8, C_BLEU),
-            ('BACKGROUND',    (1, 0), (1, 0),   C_BG_CLI),
-            ('LEFTPADDING',   (1, 0), (1, 0),   10),
-            ('RIGHTPADDING',  (1, 0), (1, 0),   10),
-            ('TOPPADDING',    (1, 0), (1, 0),   8),
-            ('BOTTOMPADDING', (1, 0), (1, 0),   8),
+            ('RIGHTPADDING',  (0, 0), (0, 0),   0),
+            ('ALIGN',         (1, 0), (1, 0),   'RIGHT'),
         ]))
-        story.append(t_header)
+        story.append(t_logo)
+        story.append(Spacer(1, 0.3*cm))
+
+        # ── Bloc client (sous la pharmacie, sur toute la largeur) ──
+        client_flow = []
+        client_flow.append(Paragraph("FACTURÉ À", label_cli))
+
+        if client:
+            client_flow.append(Paragraph(client.nom or "—", nom_cli))
+            if client.telephone:
+                client_flow.append(Paragraph(f"<b>Tél :</b> {client.telephone}", info_cli))
+            if client.email:
+                client_flow.append(Paragraph(f"<b>Email :</b> {client.email}", info_cli))
+            if getattr(client, 'code', None):
+                client_flow.append(Paragraph(f"<b>N° :</b> {client.code}", info_cli))
+            if client.adresse:
+                client_flow.append(Paragraph(f"<b>Adresse :</b> {client.adresse}", info_cli))
+        else:
+            client_flow.append(Paragraph("Client anonyme", info_cli))
+
+        t_client = Table([[client_flow]], colWidths=[17.4*cm])
+        t_client.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), C_BG_CLI),
+            ('BOX',        (0, 0), (-1, -1), 0.8, C_BLEU),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+            ('RIGHTPADDING',(0, 0), (-1, -1), 12),
+            ('TOPPADDING',  (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING',(0, 0), (-1, -1), 8),
+        ]))
+        story.append(t_client)
         story.append(Spacer(1, 0.4*cm))
         story.append(HRFlowable(width="100%", thickness=2, color=C_BLEU))
         story.append(Spacer(1, 0.4*cm))
@@ -267,7 +264,6 @@ def generer_pdf_facture(facture, pharmacie, client, vente, details, db) -> str |
 
         # ════════════════════════════════════════════
         # 3. TABLEAU DES PRODUITS
-        #    Colonnes : Désignation | Unité | Qté | Prix unit. | Total
         # ════════════════════════════════════════════
         entete_style = ParagraphStyle(
             'ent', fontSize=9, fontName='Helvetica-Bold',
@@ -284,7 +280,6 @@ def generer_pdf_facture(facture, pharmacie, client, vente, details, db) -> str |
 
         if details:
             for d in details:
-                # Récupérer le produit pour calculer l'unité
                 produit_obj = None
                 nom_prod    = f"Produit #{d.id_produit}"
                 try:
@@ -294,7 +289,6 @@ def generer_pdf_facture(facture, pharmacie, client, vente, details, db) -> str |
                 except Exception:
                     pass
 
-                # Déduire l'unité de vente depuis le prix_unitaire
                 unite_code, unite_label = _deduire_unite(d.prix_unitaire, produit_obj)
                 qte_label = _formater_quantite(d.quantite, unite_code, produit_obj)
 
@@ -307,7 +301,6 @@ def generer_pdf_facture(facture, pharmacie, client, vente, details, db) -> str |
                 ])
 
         elif vente:
-            # Fallback si pas de détails
             table_data.append([
                 f"Vente {getattr(vente, 'code', '')}",
                 "—",
@@ -316,38 +309,31 @@ def generer_pdf_facture(facture, pharmacie, client, vente, details, db) -> str |
                 fmt(getattr(vente, 'total', 0)),
             ])
 
-        # Largeurs : Désignation 6.5cm | Unité 2.5cm | Qté 2cm | Prix 3cm | Total 3.4cm
         t_prod = Table(
             table_data,
             colWidths=[6.5*cm, 2.5*cm, 2*cm, 3*cm, 3.4*cm],
         )
         t_prod.setStyle(TableStyle([
-            # En-tête
             ('BACKGROUND',    (0, 0),  (-1, 0),  C_BLEU),
             ('TEXTCOLOR',     (0, 0),  (-1, 0),  colors.white),
             ('FONTNAME',      (0, 0),  (-1, 0),  'Helvetica-Bold'),
             ('FONTSIZE',      (0, 0),  (-1, -1), 9),
-            # Alignement
-            ('ALIGN',         (2, 0),  (-1, -1), 'RIGHT'),   # Qté, Prix, Total → droite
-            ('ALIGN',         (0, 0),  (1, -1),  'LEFT'),    # Désignation, Unité → gauche
-            # Couleurs alternées
+            ('ALIGN',         (2, 0),  (-1, -1), 'RIGHT'),
+            ('ALIGN',         (0, 0),  (1, -1),  'LEFT'),
             ('ROWBACKGROUNDS',(0, 1),  (-1, -1), [colors.white, C_LIGNES]),
-            # Grille
             ('GRID',          (0, 0),  (-1, -1), 0.5, C_GRILLE),
             ('LINEBELOW',     (0, 0),  (-1, 0),  1, C_BLEU),
-            # Padding
             ('BOTTOMPADDING', (0, 0),  (-1, -1), 5),
             ('TOPPADDING',    (0, 0),  (-1, -1), 5),
             ('LEFTPADDING',   (0, 0),  (-1, -1), 6),
             ('RIGHTPADDING',  (0, 0),  (-1, -1), 6),
-            # Wrap texte dans Désignation
             ('WORDWRAP',      (0, 1),  (0, -1),  True),
         ]))
         story.append(KeepTogether(t_prod))
         story.append(Spacer(1, 0.5*cm))
 
         # ════════════════════════════════════════════
-        # 4. TOTAUX (alignés à droite)
+        # 4. TOTAUX
         # ════════════════════════════════════════════
         totaux = []
         remise   = float(getattr(facture, 'montant_remise', 0) or 0)
@@ -383,7 +369,6 @@ def generer_pdf_facture(facture, pharmacie, client, vente, details, db) -> str |
             Paragraph(fmt(getattr(facture, 'montant_ttc', 0)), total_val_style),
         ])
 
-        # Tableau totaux décalé à droite (largeur 9cm sur 17.4cm total)
         t_totaux = Table(totaux, colWidths=[5*cm, 4*cm])
         t_totaux.setStyle(TableStyle([
             ('ALIGN',         (0, 0),  (0, -1),  'LEFT'),
@@ -392,17 +377,14 @@ def generer_pdf_facture(facture, pharmacie, client, vente, details, db) -> str |
             ('FONTSIZE',      (0, 0),  (-1, -1), 9),
             ('BOTTOMPADDING', (0, 0),  (-1, -1), 4),
             ('TOPPADDING',    (0, 0),  (-1, -1), 4),
-            # Ligne Total TTC en bleu
             ('BACKGROUND',    (0, -1), (-1, -1), C_BLEU),
             ('LEFTPADDING',   (0, -1), (-1, -1), 8),
             ('RIGHTPADDING',  (0, -1), (-1, -1), 8),
             ('TOPPADDING',    (0, -1), (-1, -1), 6),
             ('BOTTOMPADDING', (0, -1), (-1, -1), 6),
-            # Séparateur au-dessus du total
             ('LINEABOVE',     (0, -1), (-1, -1), 1, C_BLEU),
         ]))
 
-        # Aligner à droite via un tableau conteneur
         t_totaux_wrapper = Table(
             [["", t_totaux]],
             colWidths=[8.4*cm, 9*cm],
@@ -416,7 +398,7 @@ def generer_pdf_facture(facture, pharmacie, client, vente, details, db) -> str |
         story.append(t_totaux_wrapper)
 
         # ════════════════════════════════════════════
-        # 5. NOTES + PIED DE PAGE
+        # 5. NOTES + PIED
         # ════════════════════════════════════════════
         if getattr(facture, 'notes', None):
             story.append(Spacer(1, 0.5*cm))
