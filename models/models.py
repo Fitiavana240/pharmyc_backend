@@ -210,6 +210,7 @@ class EntreeStock(Base):
     deleted_at = Column(DateTime, nullable=True)
  
     produit = relationship("Produit", back_populates="entrees")
+    fournisseur_rel = relationship("Fournisseur", foreign_keys=[id_fournisseur])
  
  
 

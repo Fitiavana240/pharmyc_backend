@@ -164,6 +164,7 @@ def list_factures(
     type_facture: Optional[str] = Query(None),
     statut:       Optional[str] = Query(None),
     id_client:    Optional[int] = Query(None),
+    id_vente:     Optional[int] = Query(None),   # ← AJOUTER
     skip:  int = Query(0,  ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -178,9 +179,9 @@ def list_factures(
     if type_facture: q = q.filter(Facture.type_facture == type_facture)
     if statut:       q = q.filter(Facture.statut       == statut)
     if id_client:    q = q.filter(Facture.id_client    == id_client)
+    if id_vente:     q = q.filter(Facture.id_vente     == id_vente)  # ← AJOUTER
     factures = q.order_by(Facture.date_facture.desc()).offset(skip).limit(limit).all()
     return [_facture_to_response(f) for f in factures]
-
 
 # ═══════════════════════════════════════════════════════════
 # GET /factures/{id} — Détail
